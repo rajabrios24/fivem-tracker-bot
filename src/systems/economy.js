@@ -1,4 +1,5 @@
 const models = require('../database/models');
+const { db } = require('../database/db');
 const { getUser } = models;
 
 const DAILY_COOLDOWN_MS = 22 * 60 * 60 * 1000; // 22 jam
@@ -68,7 +69,8 @@ function work(guildId, userId) {
   return { ok: true, amount, balance, job };
 }
 
-function transfer(fromGuildId, fromUserId, targetUserId, amount) {
+/** Transfer saldo — dijalankan dalam satu transaksi agar tidak pernah setengah jadi */
+const transfer = db.transaction((fromGuildId, fromUserId, targetUserId, amount) => {
   if (fromUserId === targetUserId) return { ok: false, message: 'Kamu tidak bisa transfer uang ke dirimu sendiri.' };
 
   const sender = getUser(fromGuildId, fromUserId);
@@ -80,7 +82,7 @@ function transfer(fromGuildId, fromUserId, targetUserId, amount) {
   models.saveUser(fromGuildId, targetUserId, { ...receiver, balance: receiver.balance + amount });
 
   return { ok: true, amount, newBalance: sender.balance - amount };
-}
+});
 
 /** Ubah saldo user (delta bisa negatif). Hasil tidak pernah di bawah 0. */
 function adjustMoney(guildId, userId, delta) {

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, MessageFlags } = require('discord.js');
 const { createEmbed, errorEmbed } = require('../../utils/embeds');
 const models = require('../../database/models');
 
@@ -10,7 +10,7 @@ module.exports = {
       opt.setName('user').setDescription('User yang diperiksa').setRequired(true),
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const user = interaction.options.getUser('user', true);
@@ -19,7 +19,7 @@ module.exports = {
     if (!warnings.length) {
       return interaction.reply({
         embeds: [errorEmbed(`${user.tag} tidak punya warning. 🎉`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -37,7 +37,7 @@ module.exports = {
           color: '#FEE75C',
         }),
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   },
 };

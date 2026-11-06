@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, MessageFlags } = require('discord.js');
 const { embedColor } = require('../config');
 
 /**
@@ -36,13 +36,12 @@ function infoEmbed(description) {
 
 /** Balas interaction dengan pesan error (aman dipanggil dari catch) */
 async function errorReply(interaction, description) {
-  const payload = { embeds: [errorEmbed(description)], ephemeral: true };
-  const content = { ...payload };
+  const payload = { embeds: [errorEmbed(description)], flags: MessageFlags.Ephemeral };
   try {
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp(payload);
     } else {
-      await interaction.reply(content);
+      await interaction.reply(payload);
     }
   } catch (err) {
     console.error('Gagal mengirim pesan error:', err);

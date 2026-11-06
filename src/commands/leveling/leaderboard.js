@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { createEmbed } = require('../../utils/embeds');
 const models = require('../../database/models');
 
@@ -7,7 +7,8 @@ const MEDALS = ['🥇', '🥈', '🥉'];
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('leaderboard')
-    .setDescription('Peringkat XP tertinggi di server ini'),
+    .setDescription('Peringkat XP tertinggi di server ini')
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     await interaction.deferReply();

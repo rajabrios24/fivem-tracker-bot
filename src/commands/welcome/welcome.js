@@ -1,21 +1,43 @@
-const { SlashCommandBuilder, PermissionFlagsBits, AttachmentBuilder, EmbedBuilder } = require('discord.js');
-const { successEmbed, createEmbed } = require('../../utils/embeds');
-const { setSetting, getSetting, getAllSettings } = require('../../database/db');
+const {
+  SlashCommandBuilder,
+  PermissionFlagsBits,
+  ChannelType,
+  InteractionContextType,
+  MessageFlags,
+} = require('discord.js');
+const { successEmbed, errorEmbed, createEmbed } = require('../../utils/embeds');
+const { setSetting, getAllSettings } = require('../../database/db');
 const welcome = require('../../systems/welcome');
 const welcomeCard = require('../../systems/welcomeCard');
 
 const VARS = '`{user}` `{mention}` `{username}` `{server}` `{memberCount}`';
+const MAX_BG_BYTES = 8 * 1024 * 1024; // 8 MB
+const ALLOWED_BG_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+
+const NO_ACCESS = (channel) =>
+  `Setting tersimpan, tapi saya tidak bisa mengirim pesan di ${channel}. Pastikan saya punya izin **View Channel**, **Send Messages**, dan **Attach Files** di sana.`;
+
+/** Kirim contoh pesan ke channel. Kembalikan false kalau gagal terkirim. */
+async function sendPreview(channel, payload) {
+  try {
+    await channel.send(payload);
+    return true;
+  } catch (err) {
+    console.error('[WELCOME] Gagal kirim preview:', err.message);
+    return false;
+  }
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('welcome')
-    .setDescription('Atur pesan welcome & goodbye')
+    .setDescription('Atur pesan & kartu welcome / goodbye')
     .addSubcommand((sub) =>
       sub
         .setName('set')
         .setDescription('Set channel & pesan welcome')
         .addChannelOption((opt) =>
-          opt.setName('channel').setDescription('Channel sambutan').addChannelTypes(0).setRequired(true),
+          opt.setName('channel').setDescription('Channel sambutan').addChannelTypes(ChannelType.GuildText).setRequired(true),
         )
         .addStringOption((opt) =>
           opt
@@ -29,7 +51,7 @@ module.exports = {
         .setName('setgoodbye')
         .setDescription('Set channel & pesan goodbye')
         .addChannelOption((opt) =>
-          opt.setName('channel').setDescription('Channel perpisahan').addChannelTypes(0).setRequired(true),
+          opt.setName('channel').setDescription('Channel perpisahan').addChannelTypes(ChannelType.GuildText).setRequired(true),
         )
         .addStringOption((opt) =>
           opt
@@ -38,74 +60,110 @@ module.exports = {
             .setMaxLength(1000),
         ),
     )
+    .addSubcommand((sub) =>
+      sub
+        .setName('background')
+        .setDescription('Ganti gambar latar kartu welcome/goodbye')
+        .addAttachmentOption((opt) =>
+          opt.setName('gambar').setDescription('Gambar PNG/JPG/WEBP, ideal 1024×500 (maks 8 MB)'),
+        )
+        .addBooleanOption((opt) =>
+          opt.setName('reset').setDescription('Hapus background custom & kembali ke default'),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('test')
+        .setDescription('Kirim contoh kartu welcome/goodbye (hanya kamu yang lihat)')
+        .addStringOption((opt) =>
+          opt
+            .setName('jenis')
+            .setDescription('Kartu yang dites')
+            .addChoices({ name: 'Welcome', value: 'welcome' }, { name: 'Goodbye', value: 'goodbye' }),
+        ),
+    )
     .addSubcommand((sub) => sub.setName('show').setDescription('Lihat konfigurasi welcome saat ini'))
     .addSubcommand((sub) => sub.setName('off').setDescription('Matikan welcome & goodbye'))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const guild = interaction.guild;
     const sub = interaction.options.getSubcommand();
 
-    if (sub === 'set') {
+    if (sub === 'set' || sub === 'setgoodbye') {
+      const isWelcome = sub === 'set';
       const channel = interaction.options.getChannel('channel', true);
       const message = interaction.options.getString('pesan');
-      setSetting(guild.id, 'welcomeChannel', channel.id);
-      if (message) setSetting(guild.id, 'welcomeMessage', message);
+      setSetting(guild.id, isWelcome ? 'welcomeChannel' : 'goodbyeChannel', channel.id);
+      if (message) setSetting(guild.id, isWelcome ? 'welcomeMessage' : 'goodbyeMessage', message);
 
-      await interaction.reply({ embeds: [successEmbed(`Welcome diaktifkan untuk ${channel}${message ? '' : ' (pesan default dipakai)'}`)], ephemeral: true });
+      await interaction.reply({
+        embeds: [successEmbed(`${isWelcome ? 'Welcome' : 'Goodbye'} diaktifkan untuk ${channel}${message ? '' : ' (pesan default dipakai)'}. Contohnya dikirim ke sana.`)],
+        flags: MessageFlags.Ephemeral,
+      });
 
-      // Kirim contoh tampilan: kartu bergambar + pesan custom
-      const template = getSetting(guild.id, 'welcomeMessage') || 'Selamat datang {mention} di server **{server}**!';
-      const text = welcome.renderTemplate(template, interaction.member);
-      try {
-        const png = await welcomeCard.createWelcomeCard(interaction.member);
-        await channel.send({
-          embeds: [
-            new EmbedBuilder()
-              .setDescription(text)
-              .setColor(0x5865f2)
-              .setImage('attachment://welcome-card.png')
-              .setFooter({ text: `Anggota ke-${guild.memberCount}` }),
-          ],
-          files: [new AttachmentBuilder(png, { name: 'welcome-card.png' })],
-        });
-      } catch (err) {
-        console.error('[WELCOME] Gagal render preview kartu:', err);
-        await channel.send({
-          embeds: [createEmbed({ thumbnail: interaction.user.displayAvatarURL({ size: 256 }), title: `🎉 Selamat datang, ${interaction.user.displayName}!`, description: text })],
-        });
+      // Contoh tampilan persis seperti saat member join/keluar
+      const payload = isWelcome
+        ? await welcome.buildWelcomeMessage(interaction.member)
+        : await welcome.buildGoodbyeMessage(interaction.member);
+      if (!(await sendPreview(channel, payload))) {
+        await interaction.followUp({ embeds: [errorEmbed(NO_ACCESS(channel))], flags: MessageFlags.Ephemeral });
       }
       return;
     }
 
-    if (sub === 'setgoodbye') {
-      const channel = interaction.options.getChannel('channel', true);
-      const message = interaction.options.getString('pesan');
-      setSetting(guild.id, 'goodbyeChannel', channel.id);
-      if (message) setSetting(guild.id, 'goodbyeMessage', message);
+    if (sub === 'background') {
+      const attachment = interaction.options.getAttachment('gambar');
+      const reset = interaction.options.getBoolean('reset') ?? false;
 
-      await interaction.reply({ embeds: [successEmbed(`Goodbye diaktifkan untuk ${channel}${message ? '' : ' (pesan default dipakai)'}`)], ephemeral: true });
-
-      const template = getSetting(guild.id, 'goodbyeMessage') || '{username} telah meninggalkan **{server}**.';
-      try {
-        const png = await welcomeCard.createGoodbyeCard(interaction.member);
-        await channel.send({
-          embeds: [
-            new EmbedBuilder()
-              .setDescription(`👋 ${welcome.renderTemplate(template, interaction.member, true)}`)
-              .setColor(0x99aab5)
-              .setImage('attachment://goodbye-card.png'),
-          ],
-          files: [new AttachmentBuilder(png, { name: 'goodbye-card.png' })],
-        });
-      } catch (err) {
-        console.error('[GOODBYE] Gagal render preview kartu:', err);
-        await channel.send({
-          embeds: [createEmbed({ title: '👋 Contoh goodbye', description: welcome.renderTemplate(template, interaction.member, true) })],
+      if (reset) {
+        const removed = welcomeCard.removeGuildBackground(guild.id);
+        return interaction.reply({
+          embeds: [removed ? successEmbed('Background custom dihapus, kembali ke default. 🖼️') : errorEmbed('Server ini belum punya background custom.')],
+          flags: MessageFlags.Ephemeral,
         });
       }
-      return;
+      if (!attachment) {
+        return interaction.reply({
+          embeds: [errorEmbed('Lampirkan gambar di opsi `gambar`, atau pakai `reset:True` untuk kembali ke default.')],
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+      const type = (attachment.contentType ?? '').split(';')[0];
+      if (!ALLOWED_BG_TYPES.includes(type)) {
+        return interaction.reply({ embeds: [errorEmbed('Format harus PNG, JPG, atau WEBP.')], flags: MessageFlags.Ephemeral });
+      }
+      if (attachment.size > MAX_BG_BYTES) {
+        return interaction.reply({ embeds: [errorEmbed('Ukuran gambar maksimal 8 MB.')], flags: MessageFlags.Ephemeral });
+      }
+
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      try {
+        // URL lampiran Discord kedaluwarsa, jadi gambar diunduh & disimpan lokal
+        const res = await fetch(attachment.url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        await welcomeCard.saveGuildBackground(guild.id, Buffer.from(await res.arrayBuffer()));
+      } catch (err) {
+        console.error('[WELCOME] Gagal simpan background:', err);
+        return interaction.editReply({ embeds: [errorEmbed('Gagal memproses gambar. Pastikan file-nya gambar yang valid.')] });
+      }
+
+      const preview = await welcome.buildWelcomeMessage(interaction.member);
+      return interaction.editReply({
+        content: '✅ Background disimpan! Begini tampilannya:',
+        files: preview.files ?? [],
+        allowedMentions: { parse: [] },
+      });
+    }
+
+    if (sub === 'test') {
+      const isWelcome = (interaction.options.getString('jenis') ?? 'welcome') === 'welcome';
+      await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+      const payload = isWelcome
+        ? await welcome.buildWelcomeMessage(interaction.member)
+        : await welcome.buildGoodbyeMessage(interaction.member);
+      return interaction.editReply({ ...payload, allowedMentions: { parse: [] } });
     }
 
     if (sub === 'show') {
@@ -117,13 +175,14 @@ module.exports = {
             fields: [
               { name: 'Channel welcome', value: s.welcomeChannel ? `<#${s.welcomeChannel}>` : '*belum diset*', inline: true },
               { name: 'Channel goodbye', value: s.goodbyeChannel ? `<#${s.goodbyeChannel}>` : '*belum diset*', inline: true },
+              { name: 'Background', value: welcomeCard.hasGuildBackground(guild.id) ? 'Custom ✅' : 'Default', inline: true },
               { name: 'Pesan welcome', value: (s.welcomeMessage ?? '*default*').slice(0, 1000) },
               { name: 'Pesan goodbye', value: (s.goodbyeMessage ?? '*default*').slice(0, 1000) },
               { name: 'Variabel yang tersedia', value: VARS },
             ],
           }),
         ],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       return;
     }
@@ -131,6 +190,6 @@ module.exports = {
     // off
     setSetting(guild.id, 'welcomeChannel', null);
     setSetting(guild.id, 'goodbyeChannel', null);
-    await interaction.reply({ embeds: [successEmbed('Welcome & goodbye dimatikan. 🔕')], ephemeral: true });
+    await interaction.reply({ embeds: [successEmbed('Welcome & goodbye dimatikan. 🔕')], flags: MessageFlags.Ephemeral });
   },
 };

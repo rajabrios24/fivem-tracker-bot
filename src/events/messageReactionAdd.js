@@ -13,15 +13,18 @@ async function resolveMessage(reaction) {
   return reaction.message;
 }
 
-/** Helper bersama untuk add/remove */
-async function handle(reaction, user, add, client) {
+/**
+ * Helper bersama untuk add/remove.
+ * Catatan: client diambil dari `reaction.client`, bukan dari argumen event,
+ * karena discord.js mengirim argumen ketiga (`details`) pada event reaksi.
+ */
+async function handle(reaction, user, add) {
   if (user.bot) return;
 
   const message = await resolveMessage(reaction);
   if (!message?.guild) return;
 
-  const emoji = reaction.emoji.id ?? reaction.emoji.name;
-  const roleId = reactionRole.findRoleForReaction(message.id, emoji);
+  const roleId = reactionRole.findRoleForReaction(message.id, reactionRole.emojiKeyFromReaction(reaction));
   if (!roleId) return;
 
   const guild = message.guild;
@@ -34,13 +37,13 @@ async function handle(reaction, user, add, client) {
   try {
     if (add) {
       await member.roles.add(role);
-      sendActionLog(client, guild.id, {
+      sendActionLog(reaction.client, guild.id, {
         title: '🎭 Reaction Role: Tambah',
         description: `${user.tag} mendapat role **${role.name}**`,
       });
     } else {
       await member.roles.remove(role);
-      sendActionLog(client, guild.id, {
+      sendActionLog(reaction.client, guild.id, {
         title: '🎭 Reaction Role: Hapus',
         description: `${user.tag} kehilangan role **${role.name}**`,
       });
@@ -52,6 +55,6 @@ async function handle(reaction, user, add, client) {
 
 module.exports = {
   name: Events.MessageReactionAdd,
-  execute: (reaction, user, client) => handle(reaction, user, true, client),
+  execute: (reaction, user) => handle(reaction, user, true),
   handle,
 };

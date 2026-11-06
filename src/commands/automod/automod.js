@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed, createEmbed } = require('../../utils/embeds');
 const antiSpam = require('../../systems/antiSpam');
 
@@ -28,7 +28,7 @@ module.exports = {
     )
     .addSubcommand((sub) => sub.setName('status').setDescription('Lihat konfigurasi auto-mod'))
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const guildId = interaction.guild.id;
@@ -39,22 +39,22 @@ module.exports = {
       antiSpam.setAntiSpam(guildId, on);
       return interaction.reply({
         embeds: [successEmbed(`Auto-mod kini **${on ? 'AKTIF' : 'MATI'}** di server ini. ${on ? '🛡️' : '💤'}`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (sub === 'addword') {
       const word = interaction.options.getString('kata', true).toLowerCase().trim();
       if (word.length < 2) {
-        return interaction.reply({ embeds: [errorEmbed('Kata minimal 2 karakter.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Kata minimal 2 karakter.')], flags: MessageFlags.Ephemeral });
       }
       const words = antiSpam.getBannedWords(guildId);
       if (words.includes(word)) {
-        return interaction.reply({ embeds: [errorEmbed('Kata itu sudah ada di daftar.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Kata itu sudah ada di daftar.')], flags: MessageFlags.Ephemeral });
       }
       words.push(word);
       antiSpam.setBannedWords(guildId, words);
-      return interaction.reply({ embeds: [successEmbed(`Kata **"${word}"** ditambahkan ke daftar terlarang.`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Kata **"${word}"** ditambahkan ke daftar terlarang.`)], flags: MessageFlags.Ephemeral });
     }
 
     if (sub === 'removeword') {
@@ -62,10 +62,10 @@ module.exports = {
       const words = antiSpam.getBannedWords(guildId);
       const filtered = words.filter((w) => w !== word);
       if (filtered.length === words.length) {
-        return interaction.reply({ embeds: [errorEmbed('Kata itu tidak ada di daftar.')], ephemeral: true });
+        return interaction.reply({ embeds: [errorEmbed('Kata itu tidak ada di daftar.')], flags: MessageFlags.Ephemeral });
       }
       antiSpam.setBannedWords(guildId, filtered);
-      return interaction.reply({ embeds: [successEmbed(`Kata **"${word}"** dihapus dari daftar terlarang.`)], ephemeral: true });
+      return interaction.reply({ embeds: [successEmbed(`Kata **"${word}"** dihapus dari daftar terlarang.`)], flags: MessageFlags.Ephemeral });
     }
 
     // status
@@ -84,7 +84,7 @@ module.exports = {
           ],
         }),
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   },
 };

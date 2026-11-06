@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../../utils/embeds');
 const { requireModeration } = require('../../utils/permissions');
 const { sendActionLog } = require('../../utils/logs');
@@ -32,14 +32,14 @@ module.exports = {
     )
     .addStringOption((opt) => opt.setName('alasan').setDescription('Alasan timeout'))
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const target = interaction.options.getMember('user');
     const durationSeconds = Number(interaction.options.getString('durasi', true));
     const reason = interaction.options.getString('alasan') ?? 'Tidak ada alasan';
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     if (!target) return interaction.editReply({ embeds: [errorEmbed('User tidak ditemukan.')] });
 
     const guard = requireModeration(interaction, target, PermissionFlagsBits.ModerateMembers);

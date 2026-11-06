@@ -19,19 +19,30 @@ function requireMemberPermission(interaction, permBit) {
  * Kembalikan embed error atau null jika lolos.
  */
 function requireModeration(interaction, target, permBit) {
-  if (!interaction.inGuild() || !interaction.member || !interaction.guild.me) return null;
+  if (!interaction.inGuild() || !interaction.member) {
+    return errorEmbed('Command ini hanya bisa dipakai di dalam server.');
+  }
 
   const executorCheck = requireMemberPermission(interaction, permBit);
   if (executorCheck) return executorCheck;
 
   const me = interaction.guild.members.me;
+  if (!me) return errorEmbed('Data bot di server ini belum tersedia. Coba lagi sebentar lagi.');
   if (!me.permissions.has(permBit)) {
     return errorEmbed(`Saya tidak punya permission **${permName(permBit)}**. Periksa peran saya di pengaturan server.`);
   }
   if (target.user.id === interaction.client.user.id) {
     return errorEmbed('Me? Saya tidak bisa memoderasi diri sendiri 😅');
   }
-  if (interaction.member.roles.highest.position <= target.roles.highest.position) {
+  if (target.id === interaction.user.id) {
+    return errorEmbed('Kamu tidak bisa memoderasi dirimu sendiri.');
+  }
+  if (target.id === interaction.guild.ownerId) {
+    return errorEmbed('Owner server tidak bisa dimoderasi.');
+  }
+  // Owner server boleh memoderasi siapa pun di bawah bot
+  const isOwner = interaction.user.id === interaction.guild.ownerId;
+  if (!isOwner && interaction.member.roles.highest.position <= target.roles.highest.position) {
     return errorEmbed('Kamu tidak bisa memoderasi anggota dengan peran yang sama tinggi atau lebih tinggi darimu.');
   }
   if (target.roles.highest.position >= me.roles.highest.position) {

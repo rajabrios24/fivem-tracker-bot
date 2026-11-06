@@ -1,29 +1,40 @@
-const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const fs = require('node:fs');
+const path = require('node:path');
+const { createCanvas, loadImage, GlobalFonts } = require('@napi-rs/canvas');
 
-const W = 1000;
-const H = 450;
-const AVATAR_R = 90;
-const CONFETTI_COLORS = ['#FEE75C', '#57F287', '#EB459E', '#5865F2', '#ED4245', '#FAA61A', '#FFFFFF'];
+// ===== Ukuran kartu (rasio ~2:1, sama seperti kartu welcome bot populer) =====
+const W = 1024;
+const H = 500;
+const AVATAR_R = 125;
+const AVATAR_CY = 180;
+const RING = 8;
 
-/** PRNG deterministik dari seed string (polanya konsisten per user) */
-function mulberry32(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a += 0x6d2b79f5;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const ROOT = path.join(__dirname, '..', '..');
+const FONT_DIR = path.join(ROOT, 'assets', 'fonts');
+/** Background custom per server (diset lewat /welcome background) */
+const BG_DIR = path.join(ROOT, 'data', 'backgrounds');
+/** Background default untuk semua server — taruh file sendiri di sini (opsional) */
+const DEFAULT_BG_CANDIDATES = ['welcome-background.png', 'welcome-background.jpg', 'welcome-background.jpeg', 'welcome-background.webp']
+  .map((f) => path.join(ROOT, 'assets', f));
 
-function hashSeed(str) {
-  let h = 2166136261;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+// ===== Font =====
+// Barlow (SIL Open Font License) ikut dibundel di assets/fonts agar tampilan
+// sama di Windows maupun hosting Linux. Kalau file tidak ada, pakai font sistem.
+function registerFont(file, alias) {
+  const p = path.join(FONT_DIR, file);
+  try {
+    if (fs.existsSync(p) && GlobalFonts.registerFromPath(p, alias)) return alias;
+  } catch (err) {
+    console.warn(`[WELCOME CARD] Gagal memuat font ${file}:`, err.message);
   }
-  return h >>> 0;
+  return null;
+}
+const TITLE_FONT = registerFont('Barlow-ExtraBold.ttf', 'WelcomeTitle') ?? 'Arial Black';
+const NAME_FONT = registerFont('Barlow-Bold.ttf', 'WelcomeName') ?? 'Arial';
+
+/** Path file background custom untuk satu server */
+function guildBackgroundPath(guildId) {
+  return path.join(BG_DIR, `${guildId}.png`);
 }
 
 /** Cover-fit: gambar image agar memenuhi area w×h seperti CSS object-fit: cover */
@@ -44,172 +55,160 @@ function drawCover(ctx, image, x, y, w, h) {
   ctx.drawImage(image, sx, sy, sw, sh, x, y, w, h);
 }
 
-/** Lingkaran avatar + ring glow */
-function drawAvatar(ctx, avatar, cx, cy, r) {
-  // Glow luar
+/**
+ * Pilih background: custom server → default di assets/ → banner server → gradient.
+ * Selalu berhasil (gradient sebagai cadangan terakhir).
+ */
+async function drawBackground(ctx, guild) {
+  const sources = [guildBackgroundPath(guild.id), ...DEFAULT_BG_CANDIDATES].filter((p) => fs.existsSync(p));
+  const banner = guild.bannerURL({ extension: 'png', size: 1024 });
+  if (banner) sources.push(banner);
+
+  for (const src of sources) {
+    try {
+      drawCover(ctx, await loadImage(src), 0, 0, W, H);
+      return;
+    } catch (err) {
+      console.warn('[WELCOME CARD] Background gagal dimuat, coba sumber lain:', err.message);
+    }
+  }
+
+  const gradient = ctx.createLinearGradient(0, 0, W, H);
+  gradient.addColorStop(0, '#5865F2');
+  gradient.addColorStop(0.55, '#7B5FE8');
+  gradient.addColorStop(1, '#EB459E');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, W, H);
+}
+
+/** Gelapkan bagian bawah sedikit supaya teks putih tetap terbaca di background terang */
+function drawBottomShade(ctx, strength) {
+  const shade = ctx.createLinearGradient(0, H * 0.45, 0, H);
+  shade.addColorStop(0, 'rgba(0, 0, 0, 0)');
+  shade.addColorStop(1, `rgba(0, 0, 0, ${strength})`);
+  ctx.fillStyle = shade;
+  ctx.fillRect(0, 0, W, H);
+}
+
+/** Avatar bulat dengan ring putih tebal + bayangan lembut */
+async function drawAvatar(ctx, member) {
+  const cx = W / 2;
+  const cy = AVATAR_CY;
+
+  // Ring putih + bayangan
   ctx.save();
-  ctx.shadowColor = 'rgba(255, 255, 255, 0.55)';
-  ctx.shadowBlur = 35;
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.35)';
+  ctx.shadowBlur = 24;
+  ctx.shadowOffsetY = 4;
   ctx.beginPath();
-  ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+  ctx.arc(cx, cy, AVATAR_R + RING, 0, Math.PI * 2);
   ctx.fillStyle = '#ffffff';
   ctx.fill();
   ctx.restore();
 
-  // Avatar itu sendiri (clip lingkaran)
+  // Isi avatar (clip lingkaran)
   ctx.save();
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
+  ctx.arc(cx, cy, AVATAR_R, 0, Math.PI * 2);
   ctx.closePath();
   ctx.clip();
-  drawCover(ctx, avatar, cx - r, cy - r, r * 2, r * 2);
+  try {
+    const avatar = await loadImage(member.displayAvatarURL({ extension: 'png', size: 512 }));
+    drawCover(ctx, avatar, cx - AVATAR_R, cy - AVATAR_R, AVATAR_R * 2, AVATAR_R * 2);
+  } catch (err) {
+    console.warn('[WELCOME CARD] Avatar gagal dimuat:', err.message);
+    ctx.fillStyle = '#5865F2';
+    ctx.fillRect(cx - AVATAR_R, cy - AVATAR_R, AVATAR_R * 2, AVATAR_R * 2);
+  }
   ctx.restore();
-
-  // Ring tipis
-  ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = '#ffffff';
-  ctx.stroke();
 }
 
-/** Konfeti: potongan kecil warna-warni, deterministik per user */
-function drawConfetti(ctx, seed, count = 90) {
-  const rand = mulberry32(hashSeed(seed));
-  for (let i = 0; i < count; i++) {
-    const x = rand() * W;
-    const y = rand() * H;
-    const size = 6 + rand() * 12;
-    const angle = rand() * Math.PI;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(angle);
-    ctx.globalAlpha = 0.55 + rand() * 0.35;
-    ctx.fillStyle = CONFETTI_COLORS[Math.floor(rand() * CONFETTI_COLORS.length)];
-    ctx.fillRect(-size / 2, -size / 4, size, size / 2);
-    ctx.restore();
-  }
-}
-
-/** Teks tengah dengan shadow lembut */
-function drawCenterText(ctx, text, y, { size, weight = 'bold', color = '#ffffff', shadow = true }) {
+/** Teks tengah putih dengan bayangan; dikecilkan otomatis kalau terlalu lebar */
+function drawCenterText(ctx, text, y, { family, size, minSize = 20 }) {
   ctx.save();
-  if (shadow) {
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.7)';
-    ctx.shadowBlur = 10;
-    ctx.shadowOffsetY = 2;
-  }
-  ctx.fillStyle = color;
-  ctx.font = `${weight} ${size}px sans-serif`;
+  ctx.fillStyle = '#ffffff';
   ctx.textAlign = 'center';
-  // Pangkas teks kelewat panjang
+  ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
+  ctx.shadowBlur = 14;
+  ctx.shadowOffsetY = 3;
+
+  const maxWidth = W - 120;
+  let s = size;
+  ctx.font = `${s}px "${family}", sans-serif`;
+  while (ctx.measureText(text).width > maxWidth && s > minSize) {
+    s -= 2;
+    ctx.font = `${s}px "${family}", sans-serif`;
+  }
+  // Masih kepanjangan di ukuran minimum → potong dengan elipsis
   let t = text;
-  while (ctx.measureText(t).width > W - 120 && t.length > 3) t = t.slice(0, -2);
-  if (t !== text) t += '…';
+  while (ctx.measureText(t).width > maxWidth && t.length > 3) t = t.slice(0, -1);
+  if (t !== text) t = `${t.slice(0, -1)}…`;
+
   ctx.fillText(t, W / 2, y);
   ctx.restore();
 }
 
-/** Pill badge "Member ke-N" di pojok kiri atas */
-function drawCounterBadge(ctx, count) {
-  const label = `Member ke-${count.toLocaleString('id-ID')}`;
-  ctx.save();
-  ctx.font = 'bold 26px sans-serif';
-  const tw = ctx.measureText(label).width;
-  const padding = 22;
-  const x = 28;
-  const y = 28;
-  const w = tw + padding * 2;
-  const h = 46;
-  const r = h / 2;
-
-  // Kotak rounded pill semi transparan
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
-  ctx.fill();
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.35)';
-  ctx.lineWidth = 2;
-  ctx.stroke();
-
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'left';
-  ctx.fillText(label, x + padding, y + h / 2 + 9);
-  ctx.restore();
-}
-
 /**
- * Buat kartu welcome/goodbye sebagai PNG buffer.
- * Layout: background (banner server/gradient) → scrim gelap → avatar lingkaran
- * ber-glow → title → subtitle → badge counter (+ konfeti kalau celebrating).
+ * Buat kartu sebagai PNG buffer.
+ * Layout: background penuh → shade bawah → avatar bulat ber-ring → judul besar → username.
  */
-async function createCard({ member, title, subtitle, celebrating = false }) {
+async function createCard({ member, title, shade = 0.35 }) {
   const canvas = createCanvas(W, H);
   const ctx = canvas.getContext('2d');
 
-  // ---- Background ----
-  const bannerUrl = member.guild.bannerURL({ extension: 'png', size: 1024 });
-  if (bannerUrl) {
-    const bg = await loadImage(bannerUrl);
-    drawCover(ctx, bg, 0, 0, W, H);
-  } else {
-    const gradient = ctx.createLinearGradient(0, 0, W, H);
-    gradient.addColorStop(0, '#5865F2');
-    gradient.addColorStop(0.55, '#7B5FE8');
-    gradient.addColorStop(1, '#EB459E');
-    ctx.fillStyle = gradient;
-    ctx.fillRect(0, 0, W, H);
-  }
+  await drawBackground(ctx, member.guild);
+  drawBottomShade(ctx, shade);
+  await drawAvatar(ctx, member);
 
-  // Scrim agar teks terbaca
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-  ctx.fillRect(0, 0, W, H);
-
-  // ---- Konfeti (di bawah scrim, di atas background) ----
-  if (celebrating) drawConfetti(ctx, member.id, 100);
-
-  // ---- Title & subtitle (teks ditata dulu supaya posisi avatar pas) ----
-  const nameY = H - 118;
-  const subY = H - 66;
-
-  // ---- Avatar ----
-  const avatarUrl = member.displayAvatarURL({ extension: 'png', size: 256 });
-  const avatar = await loadImage(avatarUrl);
-  drawAvatar(ctx, avatar, W / 2, AVATAR_R + 60, AVATAR_R);
-
-  // ---- Teks ----
-  drawCenterText(ctx, title, nameY, { size: 52 });
-  drawCenterText(ctx, subtitle, subY, { size: 30, weight: 'normal', color: '#e6e6fa' });
-
-  // ---- Badge ----
-  drawCounterBadge(ctx, member.guild.memberCount);
+  // Username Discord hanya huruf/angka/._ → aman digambar tanpa masalah glyph emoji
+  const name = (member.user?.username ?? member.displayName ?? 'member').toUpperCase();
+  drawCenterText(ctx, title, 395, { family: TITLE_FONT, size: 96, minSize: 60 });
+  drawCenterText(ctx, name, 448, { family: NAME_FONT, size: 44, minSize: 24 });
 
   return canvas.encode('png');
 }
 
-/** Kartu welcome 🎉 (dengan konfeti) */
-function createWelcomeCard(member, serverName = member.guild.name) {
-  return createCard({
-    member,
-    title: `Selamat datang, ${member.displayName}!`,
-    subtitle: `di ${serverName} 🎉`,
-    celebrating: true,
-  });
+/** Kartu welcome */
+function createWelcomeCard(member) {
+  return createCard({ member, title: 'WELCOME' });
 }
 
-/** Kartu goodbye 👋 (lebih tenang, tanpa konfeti) */
-function createGoodbyeCard(member, serverName = member.guild.name) {
-  return createCard({
-    member,
-    title: `Selamat tinggal…`,
-    subtitle: `${member.displayName} meninggalkan ${serverName}`,
-    celebrating: false,
-  });
+/** Kartu goodbye (shade sedikit lebih gelap) */
+function createGoodbyeCard(member) {
+  return createCard({ member, title: 'GOODBYE', shade: 0.5 });
 }
 
-module.exports = { createWelcomeCard, createGoodbyeCard };
+/**
+ * Simpan gambar jadi background custom server. Gambar langsung di-crop ke
+ * ukuran kartu dan disimpan sebagai PNG, jadi render berikutnya cepat.
+ * Melempar error kalau buffer bukan gambar yang valid.
+ */
+async function saveGuildBackground(guildId, imageBuffer) {
+  const image = await loadImage(imageBuffer);
+  const canvas = createCanvas(W, H);
+  drawCover(canvas.getContext('2d'), image, 0, 0, W, H);
+  fs.mkdirSync(BG_DIR, { recursive: true });
+  fs.writeFileSync(guildBackgroundPath(guildId), await canvas.encode('png'));
+}
+
+/** Hapus background custom server. Kembalikan true kalau ada yang dihapus. */
+function removeGuildBackground(guildId) {
+  const p = guildBackgroundPath(guildId);
+  if (!fs.existsSync(p)) return false;
+  fs.unlinkSync(p);
+  return true;
+}
+
+function hasGuildBackground(guildId) {
+  return fs.existsSync(guildBackgroundPath(guildId));
+}
+
+module.exports = {
+  createWelcomeCard,
+  createGoodbyeCard,
+  saveGuildBackground,
+  removeGuildBackground,
+  hasGuildBackground,
+  CARD_WIDTH: W,
+  CARD_HEIGHT: H,
+};

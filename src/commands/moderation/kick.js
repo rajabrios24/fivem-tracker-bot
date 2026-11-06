@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../../utils/embeds');
 const { requireModeration } = require('../../utils/permissions');
 const { sendActionLog } = require('../../utils/logs');
@@ -14,13 +14,13 @@ module.exports = {
       opt.setName('alasan').setDescription('Alasan kick'),
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const target = interaction.options.getMember('user');
     const reason = interaction.options.getString('alasan') ?? 'Tidak ada alasan';
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     if (!target) {
       return interaction.editReply({ embeds: [errorEmbed('User tidak ditemukan. Pastikan user masih anggota server.')] });

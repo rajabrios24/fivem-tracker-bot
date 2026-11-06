@@ -1,6 +1,6 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, MessageFlags } = require('discord.js');
 const { errorEmbed, successEmbed } = require('../../utils/embeds');
-const { requireModeration } = require('../../utils/permissions');
+const { requireModeration, requireMemberPermission } = require('../../utils/permissions');
 const { sendActionLog } = require('../../utils/logs');
 
 module.exports = {
@@ -22,38 +22,47 @@ module.exports = {
         .setRequired(false),
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
+    const user = interaction.options.getUser('user', true);
     const target = interaction.options.getMember('user');
     const reason = interaction.options.getString('alasan') ?? 'Tidak ada alasan';
+    const deleteMessageSeconds = (interaction.options.getInteger('hapus_pesan') ?? 0) * 86400;
+    const auditReason = `${reason} (oleh ${interaction.user.tag})`;
 
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    if (!target) {
-      const user = interaction.options.getUser('user', true);
-      if (user) {
-        // Ban user yang sudah keluar server tetap bisa via ID
-        await interaction.guild.members.ban(user.id, { reason, deleteMessageSeconds: (interaction.options.getInteger('hapus_pesan') ?? 0) * 86400 });
-        return interaction.editReply({ embeds: [successEmbed(`**${user.tag}** telah di-ban.`)] });
+    if (target) {
+      // User masih di server → cek hierarki role lengkap
+      const guard = requireModeration(interaction, target, PermissionFlagsBits.BanMembers);
+      if (guard) return interaction.editReply({ embeds: [guard] });
+
+      await target.send(`🚫 Kamu di-ban dari **${interaction.guild.name}**.\nAlasan: ${reason}`).catch(() => {});
+    } else {
+      // User sudah keluar server → ban via ID (tidak ada hierarki role untuk dicek)
+      const guard = requireMemberPermission(interaction, PermissionFlagsBits.BanMembers);
+      if (guard) return interaction.editReply({ embeds: [guard] });
+      if (user.id === interaction.client.user.id) {
+        return interaction.editReply({ embeds: [errorEmbed('Saya tidak bisa mem-ban diri sendiri 😅')] });
       }
-      return interaction.editReply({ embeds: [errorEmbed('User tidak ditemukan.')] });
+      if (!interaction.guild.members.me?.permissions.has(PermissionFlagsBits.BanMembers)) {
+        return interaction.editReply({ embeds: [errorEmbed('Saya tidak punya permission **BanMembers**.')] });
+      }
     }
 
-    const guard = requireModeration(interaction, target, PermissionFlagsBits.BanMembers);
-    if (guard) return interaction.editReply({ embeds: [guard] });
+    try {
+      await interaction.guild.members.ban(user.id, { reason: auditReason, deleteMessageSeconds });
+    } catch (err) {
+      console.error('[BAN] Gagal:', err.message);
+      return interaction.editReply({ embeds: [errorEmbed(`Gagal mem-ban **${user.tag}**: ${err.message}`)] });
+    }
 
-    await target.send(`🚫 Kamu di-ban dari **${interaction.guild.name}**.\nAlasan: ${reason}`).catch(() => {});
-    await interaction.guild.members.ban(target, {
-      reason: `${reason} (oleh ${interaction.user.tag})`,
-      deleteMessageSeconds: (interaction.options.getInteger('hapus_pesan') ?? 0) * 86400,
-    });
-
-    await interaction.editReply({ embeds: [successEmbed(`**${target.user.tag}** telah di-ban.\nAlasan: ${reason}`)] });
+    await interaction.editReply({ embeds: [successEmbed(`**${user.tag}** telah di-ban.\nAlasan: ${reason}`)] });
 
     sendActionLog(interaction.client, interaction.guild.id, {
       title: '🔨 Ban',
-      description: `**${target.user.tag}** di-ban oleh ${interaction.user}`,
+      description: `**${user.tag}** (${user.id}) di-ban oleh ${interaction.user}${target ? '' : ' *(sudah tidak di server)*'}`,
       fields: [{ name: 'Alasan', value: reason }],
       color: '#ED4245',
     });

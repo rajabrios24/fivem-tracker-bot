@@ -44,10 +44,22 @@ function trackMessage(guildId, userId) {
   return history.length > MAX_MESSAGES;
 }
 
-/** Cek apakah pesan mengandung kata terlarang → kembalikan kata yg cocok */
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Cek apakah pesan mengandung kata terlarang → kembalikan kata yg cocok.
+ * Dicocokkan sebagai kata utuh (bukan potongan kata), jadi larangan "ass"
+ * tidak ikut menghapus "class" atau "pass".
+ */
 function findBannedWord(guildId, content) {
-  const lower = content.toLowerCase();
-  return getBannedWords(guildId).find((word) => lower.includes(word.toLowerCase())) ?? null;
+  if (!content) return null;
+  return (
+    getBannedWords(guildId).find((word) =>
+      new RegExp(`(?<![\\p{L}\\p{N}_])${escapeRegex(word)}(?![\\p{L}\\p{N}_])`, 'iu').test(content),
+    ) ?? null
+  );
 }
 
 /**

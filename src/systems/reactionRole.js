@@ -1,38 +1,52 @@
 const { db } = require('../database/db');
 
-/** Dapatkan semua role yang terhubung ke reaksi pada satu pesan */
+const findStmt = db.prepare('SELECT role_id FROM reaction_roles WHERE message_id = ? AND emoji = ?');
+const addStmt = db.prepare(
+  'INSERT OR REPLACE INTO reaction_roles (guild_id, channel_id, message_id, emoji, role_id) VALUES (?, ?, ?, ?, ?)',
+);
+const removeStmt = db.prepare('DELETE FROM reaction_roles WHERE guild_id = ? AND message_id = ? AND emoji = ?');
+const listStmt = db.prepare('SELECT * FROM reaction_roles WHERE guild_id = ?');
+
+/** Dapatkan role yang terhubung ke reaksi pada satu pesan */
 function findRoleForReaction(messageId, emoji) {
-  const row = db
-    .prepare('SELECT role_id FROM reaction_roles WHERE message_id = ? AND emoji = ?')
-    .get(messageId, emoji);
-  return row?.role_id ?? null;
+  return findStmt.get(messageId, emoji)?.role_id ?? null;
 }
 
-function addReactionRole(guildId, messageId, emoji, roleId) {
-  db.prepare(
-    'INSERT OR REPLACE INTO reaction_roles (guild_id, message_id, emoji, role_id) VALUES (?, ?, ?, ?)',
-  ).run(guildId, messageId, emoji, roleId);
+function addReactionRole(guildId, channelId, messageId, emoji, roleId) {
+  addStmt.run(guildId, channelId, messageId, emoji, roleId);
 }
 
-function removeReactionRole(messageId, emoji) {
-  const info = db
-    .prepare('DELETE FROM reaction_roles WHERE message_id = ? AND emoji = ?')
-    .run(messageId, emoji);
-  return info.changes;
+/** Hapus mapping — dibatasi per server agar server lain tidak bisa menghapusnya */
+function removeReactionRole(guildId, messageId, emoji) {
+  return removeStmt.run(guildId, messageId, emoji).changes;
 }
 
-function listReactionRoles(guildId = null) {
-  if (guildId) {
-    return db.prepare('SELECT * FROM reaction_roles WHERE guild_id = ?').all(guildId);
-  }
-  return db.prepare('SELECT * FROM reaction_roles').all();
+function listReactionRoles(guildId) {
+  return listStmt.all(guildId);
 }
 
-/** Normalisasi emoji: custom emoji → id, unicode emoji → karakternya */
-function normalizeEmoji(fromReaction) {
-  // Reaction sini adalah object; ambil nama (unicode) atau identifier kombinasi
-  if (fromReaction.emoji.id) return fromReaction.emoji.id;
-  return fromReaction.emoji.name;
+/**
+ * Normalisasi emoji dari input teks user menjadi kunci yang sama dengan
+ * yang dipakai event reaksi: custom emoji `<:nama:123>` / `<a:nama:123>` → `123`,
+ * emoji unicode → karakternya apa adanya.
+ */
+function normalizeEmojiInput(input) {
+  const trimmed = input.trim();
+  const custom = trimmed.match(/^<a?:\w+:(\d+)>$/);
+  if (custom) return custom[1];
+  return trimmed;
 }
 
-module.exports = { findRoleForReaction, addReactionRole, removeReactionRole, listReactionRoles, normalizeEmoji };
+/** Kunci emoji dari objek reaksi Discord (custom → id, unicode → nama) */
+function emojiKeyFromReaction(reaction) {
+  return reaction.emoji.id ?? reaction.emoji.name;
+}
+
+module.exports = {
+  findRoleForReaction,
+  addReactionRole,
+  removeReactionRole,
+  listReactionRoles,
+  normalizeEmojiInput,
+  emojiKeyFromReaction,
+};

@@ -1,5 +1,5 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
-const { successEmbed } = require('../../utils/embeds');
+const { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, MessageFlags } = require('discord.js');
+const { successEmbed, errorEmbed } = require('../../utils/embeds');
 const economy = require('../../systems/economy');
 
 module.exports = {
@@ -11,11 +11,15 @@ module.exports = {
       opt.setName('jumlah').setDescription('Jumlah (negatif = ambil saldo)').setMinValue(-1e9).setMaxValue(1e9).setRequired(true),
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const user = interaction.options.getUser('user', true);
     const amount = interaction.options.getInteger('jumlah', true);
+
+    if (user.bot) {
+      return interaction.reply({ embeds: [errorEmbed('Bot tidak punya dompet.')], flags: MessageFlags.Ephemeral });
+    }
 
     const balance = economy.adjustMoney(interaction.guild.id, user.id, amount);
     await interaction.reply({
@@ -24,7 +28,7 @@ module.exports = {
           `Saldo ${user} ${amount >= 0 ? '+' : ''}${amount.toLocaleString('id-ID')} 🪙 → sekarang **${balance.toLocaleString('id-ID')} 🪙**`,
         ),
       ],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   },
 };

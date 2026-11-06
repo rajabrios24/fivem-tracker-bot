@@ -1,11 +1,10 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
 const { createEmbed } = require('../../utils/embeds');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('botinfo')
-    .setDescription('Informasi tentang bot ini')
-    .setDefaultMemberPermissions(PermissionFlagsBits.SendMessages),
+    .setDescription('Informasi tentang bot ini'),
 
   async execute(interaction) {
     const client = interaction.client;

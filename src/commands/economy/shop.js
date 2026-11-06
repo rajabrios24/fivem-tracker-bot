@@ -1,11 +1,12 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { createEmbed } = require('../../utils/embeds');
 const economy = require('../../systems/economy');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('shop')
-    .setDescription('Lihat daftar barang yang dijual 🏪'),
+    .setDescription('Lihat daftar barang yang dijual 🏪')
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const items = economy.getShopItems();

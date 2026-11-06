@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { createEmbed } = require('../../utils/embeds');
 const models = require('../../database/models');
 
@@ -6,7 +6,8 @@ module.exports = {
   data: new SlashCommandBuilder()
     .setName('balance')
     .setDescription('Lihat saldo & statistik ekonomi kamu (atau user lain)')
-    .addUserOption((opt) => opt.setName('user').setDescription('User yang saldo-nya dilihat')),
+    .addUserOption((opt) => opt.setName('user').setDescription('User yang saldo-nya dilihat'))
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     await interaction.deferReply();

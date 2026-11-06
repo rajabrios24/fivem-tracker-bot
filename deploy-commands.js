@@ -24,6 +24,11 @@ function collectCommands(dir) {
 }
 
 (async () => {
+  if (!config.clientId) {
+    console.error('[DEPLOY] CLIENT_ID belum diisi di file .env! (Developer Portal → General Information → Application ID)');
+    process.exit(1);
+  }
+
   const commands = collectCommands(path.join(__dirname, 'src', 'commands'));
   console.log(`Mendaftarkan ${commands.length} slash command...`);
 

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js');
 const { embedColor } = require('../../config');
 
 module.exports = {
@@ -22,7 +22,7 @@ module.exports = {
         },
         {
           name: '📈 Leveling',
-          value: '`/rank` `/leaderboard` `/givexp` (admin)',
+          value: '`/rank` `/leaderboard` `/givexp` (admin) `/synclevels` (admin)',
         },
         {
           name: '💰 Ekonomi',
@@ -36,11 +36,11 @@ module.exports = {
         },
         {
           name: '🚫 Auto-Mod',
-          value: '`/automod toggle` `/automod addword` `/automod removeword` `/automod words`',
+          value: '`/automod toggle` `/automod addword` `/automod removeword` `/automod status`',
         },
       )
-      .setFooter({ text: 'Slash command punya autocomplete — mulai ketik "/" untuk melihat semuanya.' });
+      .setFooter({ text: 'Mulai ketik "/" untuk melihat semua command beserta opsinya.' });
 
-    await interaction.reply({ embeds: [embed], ephemeral: true });
+    await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
   },
 };

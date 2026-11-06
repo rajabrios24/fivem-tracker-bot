@@ -3,5 +3,5 @@ const { handle } = require('./messageReactionAdd');
 
 module.exports = {
   name: Events.MessageReactionRemove,
-  execute: (reaction, user, client) => handle(reaction, user, false, client),
+  execute: (reaction, user) => handle(reaction, user, false),
 };

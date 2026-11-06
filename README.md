@@ -47,7 +47,7 @@ Bot Discord powerful berbasis **Node.js + discord.js v14 + SQLite**.
 | Moderasi | `/ban` `/kick` `/timeout` `/untimeout` `/warn` `/warnings` `/clearwarns` `/purge` `/logs set ・ off` |
 | Leveling | `/rank` `/leaderboard` `/givexp` (admin) `/synclevels` (admin) |
 | Ekonomi | `/balance` `/daily` `/work` `/shop` `/buy` `/transfer` `/addmoney` (admin) |
-| Welcome | `/welcome set ・ setgoodbye ・ show ・ off` |
+| Welcome | `/welcome set ・ setgoodbye ・ background ・ test ・ show ・ off` |
 | Reaction Role | `/reactionrole add ・ remove ・ list` |
 | Auto-Mod | `/automod toggle ・ addword ・ removeword ・ status` |
 
@@ -55,9 +55,12 @@ Bot Discord powerful berbasis **Node.js + discord.js v14 + SQLite**.
 
 - **XP & Leveling** — tiap pesan memberi XP 15–25 (cooldown 60 detik agar tidak farming). Naik level = bonus **250 🪙**. Formula level: tiap level butuh `100×level + 50×level×(level+1)/2` XP kumulatif.
 - **Ekonomi** — saldo awal 1000 🪙. `/daily` = 1000 🪙 tiap 22 jam. `/work` = 150–400 🪙 tiap 30 menit.
-- **Anti-Spam** (otomatis) — >6 pesan dalam 5 detik → **timeout 10 menit**. Kata terlarang (set via `/automod addword`) → pesan terhapus + **warning**. Moderator (ManageMessages) dikecualikan.
-- **Welcome/Goodbye** — set channel, pesan mendukung variabel `{user}` `{mention}` `{username}` `{server}` `{memberCount}`.
-- **Reaction Role** — `/reactionrole add <message_id> <emoji> <role>`, sistem memberi/mengambil role ketika member reaksi/un-reaksi emoji.
+- **Anti-Spam** (otomatis) — >6 pesan dalam 5 detik → **timeout 10 menit**. Kata terlarang (set via `/automod addword`, dicocokkan per kata utuh) → pesan terhapus + **warning**. Moderator (ManageMessages) dikecualikan.
+- **Welcome/Goodbye** — set channel, pesan mendukung variabel `{user}` `{mention}` `{username}` `{server}` `{memberCount}`. Pesan dikirim sebagai teks + **kartu gambar** (avatar bulat, tulisan WELCOME/GOODBYE, username).
+  - Ganti gambar latar: `/welcome background gambar:<file>` (PNG/JPG/WEBP, ideal 1024×500). Reset: `/welcome background reset:True`.
+  - Background default untuk semua server: taruh `assets/welcome-background.png`. Urutan: custom server → default → banner server → gradien.
+  - Cek tampilan tanpa menunggu member join: `/welcome test`.
+- **Reaction Role** — `/reactionrole add <message_id> <emoji> <role> [channel]`, mendukung emoji unicode & custom. Sistem memberi/mengambil role ketika member reaksi/un-reaksi emoji.
 - **Log Moderasi** — aktifkan dengan `/logs set #channel`; semua aksi moderasi & auto-mod tercatat di situ.
 
 ## 📁 Struktur
@@ -72,6 +75,8 @@ src/
 ├── systems/             # leveling, ekonomi, antiSpam, welcome, reactionRole
 ├── database/            # SQLite + helper models
 └── utils/               # embed, permission, log moderasi
+assets/fonts/            # font Barlow untuk kartu welcome (SIL Open Font License, lihat OFL.txt)
+data/backgrounds/        # background kartu per server (dibuat otomatis, tidak di-commit)
 ```
 
 ## ⚠️ Keamanan

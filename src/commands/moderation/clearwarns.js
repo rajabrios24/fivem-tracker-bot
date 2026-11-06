@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, PermissionFlagsBits, InteractionContextType, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../../utils/embeds');
 const models = require('../../database/models');
 
@@ -10,7 +10,7 @@ module.exports = {
       opt.setName('user').setDescription('User yang warningnya dihapus').setRequired(true),
     )
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
-    .setDMPermission(false),
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const user = interaction.options.getUser('user', true);
@@ -19,13 +19,13 @@ module.exports = {
     if (result.changes === 0) {
       return interaction.reply({
         embeds: [errorEmbed(`${user.tag} tidak punya warning untuk dihapus.`)],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     await interaction.reply({
       embeds: [successEmbed(`Berhasil menghapus **${result.changes}** warning milik **${user.tag}**. ✔️`)],
-      ephemeral: true,
+      flags: MessageFlags.Ephemeral,
     });
   },
 };

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType } = require('discord.js');
 const { createEmbed } = require('../../utils/embeds');
 const leveling = require('../../systems/leveling');
 
@@ -8,7 +8,8 @@ module.exports = {
     .setDescription('Lihat kartu rank & XP kamu (atau user lain)')
     .addUserOption((opt) =>
       opt.setName('user').setDescription('User yang rank-nya ingin dilihat'),
-    ),
+    )
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     await interaction.deferReply();

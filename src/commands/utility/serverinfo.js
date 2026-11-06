@@ -1,15 +1,13 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, InteractionContextType } = require('discord.js');
 const { embedColor } = require('../../config');
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('serverinfo')
-    .setDescription('Informasi tentang server ini'),
+    .setDescription('Informasi tentang server ini')
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
-    if (!interaction.inGuild()) {
-      return interaction.reply({ content: 'Command ini hanya untuk server.', ephemeral: true });
-    }
     const { guild } = interaction;
     const sfw = guild.description ? guild.description.slice(0, 1000) : '-';
 

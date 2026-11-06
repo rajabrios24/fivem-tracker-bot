@@ -7,8 +7,8 @@ module.exports = {
     .setDescription('Cek kecepatan respon bot'),
 
   async execute(interaction) {
-    const sent = await interaction.reply({ content: '📡 Mengukur...', fetchReply: true });
-    const roundtrip = sent.createdTimestamp - interaction.createdTimestamp;
+    const response = await interaction.reply({ content: '📡 Mengukur...', withResponse: true });
+    const roundtrip = response.resource.message.createdTimestamp - interaction.createdTimestamp;
 
     await interaction.editReply({
       content: null,

@@ -1,4 +1,4 @@
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, InteractionContextType, MessageFlags } = require('discord.js');
 const { successEmbed, errorEmbed } = require('../../utils/embeds');
 const economy = require('../../systems/economy');
 
@@ -8,14 +8,15 @@ module.exports = {
     .setDescription('Beli item dari toko')
     .addStringOption((opt) =>
       opt.setName('id').setDescription('ID item (lihat /shop)').setRequired(true).setAutocomplete(false),
-    ),
+    )
+    .setContexts(InteractionContextType.Guild),
 
   async execute(interaction) {
     const itemId = interaction.options.getString('id', true);
     const result = economy.buyItem(interaction.guild.id, interaction.user.id, itemId.toLowerCase());
 
     if (!result.ok) {
-      return interaction.reply({ embeds: [errorEmbed(`${result.message}\nLihat daftar barang dengan /shop`)], ephemeral: true });
+      return interaction.reply({ embeds: [errorEmbed(`${result.message}\nLihat daftar barang dengan /shop`)], flags: MessageFlags.Ephemeral });
     }
 
     await interaction.reply({
